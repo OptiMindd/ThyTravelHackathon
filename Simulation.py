@@ -15,8 +15,8 @@ model_informations = {}
 possible_passengers_between_ports = {}
 
 def interpolate_location(start_loc, end_loc, route_completion): 
-    lat = start_loc["latitude"] + (end_loc["latitude"] - start_loc["latitude"]) * route_completion
-    lon = start_loc["longitude"] + (end_loc["longitude"] - start_loc["longitude"]) * route_completion
+    lat = float(start_loc["latitude"]) + (float(end_loc["latitude"]) - float(start_loc["latitude"])) * route_completion
+    lon = float(start_loc["longitude"]) + (float(end_loc["longitude"]) - float(start_loc["longitude"])) * route_completion
     return {"latitude": lat, "longitude": lon}
 
 class Port:
@@ -73,12 +73,12 @@ class ScheduleStatusInfo:
         self.status: PlaneStatus = status
         self.departure_port_id = departure_port_id
         if self.status != PlaneStatus.WAIT:
-            assert(arrival_port_id != None or arrival_port_id != -1, 
-                print("Arrival port id must not be None or -1 when status is not WAIT!!"))
+            assert (arrival_port_id != None or arrival_port_id != -1), \
+                "Arrival port id must not be None or -1 when status is not WAIT!!"
             self.arrival_port_id = arrival_port_id
         else: 
-            assert(arrival_port_id == None or arrival_port_id == -1, 
-                print("Arrival port id must be None or -1 when status is WAIT"))
+            assert (arrival_port_id == None or arrival_port_id == -1), \
+                "Arrival port id must be None or -1 when status is WAIT!!"
     
     def expand_one_step(self): 
         self.step_count += 1
@@ -89,13 +89,13 @@ class PlaneSchedule:
         self.previous_status = None
 
     def add_step(self, status, departure_port_id, arrival_port_id=None): 
-        if status != self.previous_status.status: 
+        if self.previous_status == None or status != self.previous_status: 
             schedule_info = ScheduleStatusInfo(status, departure_port_id, arrival_port_id)
             self.status_schedule.append(schedule_info)
         else: 
             schedule_info: ScheduleStatusInfo = self.status_schedule[-1]
             schedule_info.expand_one_step()
-        self.previous_status = schedule_info
+        self.previous_status = schedule_info.status
     
     def convert_to_table(self): 
         # convert the schedule to a table with visualizations
@@ -301,10 +301,8 @@ class Simulation (gym.Env):
         self.action_space = Discrete(len(ports))
 
         self.visualize = False
-        self.visualizator = Visualization(800, 600)
-
-        self.visualize = False
-        self.visualizator = Visualization(800, 600)
+        if self.visualize: 
+            self.visualizator = Visualization(800, 600)
 
         #TODO: Do we need it ?
         # self.reset()
@@ -330,7 +328,7 @@ class Simulation (gym.Env):
             # TODO: Do we need self.reset() ?
 
 
-        return self.observe(), reward , done, {}
+        return self.observe(), reward, done, False, {}
 
     def reset(self, seed = None, options = None):
         current_plane_id = 0
@@ -341,7 +339,7 @@ class Simulation (gym.Env):
 
         self.step_count = 0
 
-        return self.observe()
+        return self.observe(), {}
 
     def observe(self):
         observations = []
