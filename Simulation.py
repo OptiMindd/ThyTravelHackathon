@@ -1,15 +1,22 @@
 import gymnasium as gym
-from gymnasium.spaces import Tuple, Discrete, Box
+from gymnasium.spaces import Tuple, Discrete, Box, Dict
 import numpy as np
 from enum import Enum
 
 import random
-from thy_api import ThyAPI
+import json
+
 ports = {}
 planes = {}
+port_distances = json.load(open("port_distances.json"))
 
 model_informations = {}
 possible_passengers_between_ports = {}
+
+def interpolate_location(start_loc, end_loc, route_completion):
+    lat = start_loc["latitude"] + (end_loc["latitude"] - start_loc["latitude"]) * route_completion
+    lon = start_loc["longitude"] + (end_loc["longitude"] - start_loc["longitude"]) * route_completion
+    return {"latitude": lat, "longitude": lon}
 
 class Port:
     def __init__(self, id, name, location):
@@ -23,6 +30,15 @@ class Port:
 
         self.current_passenger_count = None  # int
         self.possible_passenger_count = {}  # {port: int}
+
+    def update(self, mode="train"):
+        for port_id in ports.keys():
+            if port_id != self.id:
+                if mode == "test":
+                    self.possible_passenger_count[port_id] += possible_passengers_between_ports[(self.id, port_id)] * random.uniform(0.9, 1.1)
+                else:
+                    self.possible_passenger_count[port_id] = random.randint(200, 1000)
+                self.current_passenger_count += self.possible_passenger_count[port_id]
     
     def reset(self, continued_plane_id, mode="train"): 
         self.current_passenger_count = 0
@@ -94,7 +110,7 @@ class Plane:
             return self.get_reward()
         elif self.status == PlaneStatus.PREPARE:
             if action != 0: # continue to prepare
-                return -100.0
+                return -1
 
             self.steps_left_for_prepare -= 1
             if self.steps_left_for_prepare == 0:
@@ -112,14 +128,16 @@ class Plane:
                 self.current_passenger_ratio = (int) ((self.current_passenger_count / self.capacity) * 100)
                 self.route_completion = 0
 
-                # TODO: get total miles from thy api
-                self.curr_fly_total_miles = 1000
+                try:
+                    self.curr_fly_total_miles = port_distances[ports[self.departure_port_id].name][ports[self.arrival_port_id].name]
+                except:
+                    self.curr_fly_total_miles = 400
                 self.status = PlaneStatus.FLY
             return 0.8
 
         elif self.status == PlaneStatus.FLY:
             if action != 0: # continue to fly
-                return -100.0
+                return -1
 
             self.route_completion += (int) ((self.MILE_COMPLETION_PER_STEP / self.curr_fly_total_miles) * 100)
             if self.route_completion >= 1.0:
@@ -167,7 +185,7 @@ class Simulation (gym.Env):
         for port_id, port_info in enumerate(domestic_ports):
             ports[port_id] = Port(port_id, port_info[0], port_info[1])
 
-        plane_count = (int)(port_count * 3.5)
+        plane_count = 1
         for plane_id in range(plane_count):
             if plane_id % 2 == 0:
                 capacity = 250
@@ -183,7 +201,9 @@ class Simulation (gym.Env):
                                dtype=np.integer)  # departure, arrival, current_passenger, passenger_ratio, route_completion
 
         self.observation_space = Tuple([one_space for _ in range(len(planes))])
-        self.action_space = Tuple([Discrete(len(ports) + 1) for _ in range(len(planes))])
+        # self.action_space = Tuple([Discrete(len(ports) + 1) for _ in range(len(planes))])
+        # self.action_space = Dict({plane_id: Discrete(len(ports) + 1) for plane_id in range(len(planes))})
+        self.action_space = Discrete(len(ports))
 
         #TODO: Do we need it ?
         # self.reset()
@@ -193,12 +213,17 @@ class Simulation (gym.Env):
         reward = 0
         for i, plane in planes.items():
             reward += plane.step(action)
+        if self.step_count % 24 == 0:
+            for port in ports.values():
+                port.update()
 
         self.step_count += 1
 
         if self.sim_duration == self.step_count:
             done = True
+            # self.reset()
             # TODO: Do we need self.reset() ?
+
 
         return self.observe(), reward , done, {}
 
@@ -209,7 +234,7 @@ class Simulation (gym.Env):
         for i in range(current_plane_id, len(planes)):
             planes[i].reset(len(ports) - 1)
 
-        self.sim_duration = 0
+        self.step_count = 0
 
         return self.observe()
 

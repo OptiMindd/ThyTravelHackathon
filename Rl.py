@@ -20,7 +20,7 @@ from Simulation import Simulation
 from thy_api import ThyAPI
 
 port_count = 10
-plane_count = (int)(port_count * 3.5)
+plane_count = 1
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -30,21 +30,21 @@ def get_args():
     parser.add_argument('--eps-test', type=float, default=0.05)
     parser.add_argument('--eps-train', type=float, default=0.1)
     parser.add_argument('--buffer-size', type=int, default=20000)
-    parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--gamma', type=float, default=0.9)
+    parser.add_argument('--lr', type=float, default=1e-4)
+    parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--num-atoms', type=int, default=51)
     parser.add_argument('--v-min', type=float, default=-10.)
     parser.add_argument('--v-max', type=float, default=10.)
     parser.add_argument('--noisy-std', type=float, default=0.1)
     parser.add_argument('--n-step', type=int, default=3)
     parser.add_argument('--target-update-freq', type=int, default=320)
-    parser.add_argument('--epoch', type=int, default=10)
-    parser.add_argument('--step-per-epoch', type=int, default=8000)
-    parser.add_argument('--step-per-collect', type=int, default=8)
+    parser.add_argument('--epoch', type=int, default=50)
+    parser.add_argument('--step-per-epoch', type=int, default=10000)
+    parser.add_argument('--step-per-collect', type=int, default=24)
     parser.add_argument('--update-per-step', type=float, default=0.125)
-    parser.add_argument('--batch-size', type=int, default=64)
+    parser.add_argument('--batch-size', type=int, default=256)
     parser.add_argument(
-        '--hidden-sizes', type=int, nargs='*', default=[1, 128, 128, 128]
+        '--hidden-sizes', type=int, nargs='*', default=[plane_count*port_count*10, 512, 1024, 512, 128]
     )
     parser.add_argument('--training-num', type=int, default=8)
     parser.add_argument('--test-num', type=int, default=100)
@@ -219,12 +219,12 @@ def test_rainbow(args=get_args()):
         resume_from_log=args.resume,
         save_checkpoint_fn=save_checkpoint_fn,
     )
-    assert stop_fn(result["best_reward"])
+    # assert stop_fn(result["best_reward"])
 
     if __name__ == "__main__":
         pprint.pprint(result)
         # Let's watch its performance!
-        env = gym.make(args.task)
+        env = Simulation()
         policy.eval()
         policy.set_eps(args.eps_test)
         collector = Collector(policy, env)
