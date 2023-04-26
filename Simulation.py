@@ -4,12 +4,20 @@ import numpy as np
 from enum import Enum
 
 import random
-from thy_api import ThyAPI
+import pygame
+import json
+
 ports = {}
 planes = {}
+port_distances = json.load(open("port_distances.json"))
 
 model_informations = {}
 possible_passengers_between_ports = {}
+
+def interpolate_location(start_loc, end_loc, route_completion): 
+    lat = start_loc["latitude"] + (end_loc["latitude"] - start_loc["latitude"]) * route_completion
+    lon = start_loc["longitude"] + (end_loc["longitude"] - start_loc["longitude"]) * route_completion
+    return {"latitude": lat, "longitude": lon}
 
 class Port:
     def __init__(self, id, name, location):
@@ -50,6 +58,44 @@ class PlaneStatus(Enum):
     PREPARE = 1
     FLY = 2
 
+class ScheduleStatusInfo: 
+    def __init__(self, status, departure_port_id, arrival_port_id): 
+        self.step_count = 1
+        self.status: PlaneStatus = status
+        self.departure_port_id = departure_port_id
+        if self.status != PlaneStatus.WAIT:
+            assert(arrival_port_id != None or arrival_port_id != -1, 
+                print("Arrival port id must not be None or -1 when status is not WAIT!!"))
+            self.arrival_port_id = arrival_port_id
+        else: 
+            assert(arrival_port_id == None or arrival_port_id == -1, 
+                print("Arrival port id must be None or -1 when status is WAIT"))
+    
+    def expand_one_step(self): 
+        self.step_count += 1
+
+class PlaneSchedule: 
+    def __init__(self) -> None:
+        self.status_schedule = []
+        self.previous_status = None
+
+    def add_step(self, status, departure_port_id, arrival_port_id=None): 
+        if status != self.previous_status.status: 
+            schedule_info = ScheduleStatusInfo(status, departure_port_id, arrival_port_id)
+            self.status_schedule.append(schedule_info)
+        else: 
+            schedule_info: ScheduleStatusInfo = self.status_schedule[-1]
+            schedule_info.expand_one_step()
+        self.previous_status = schedule_info
+    
+    def convert_to_table(self): 
+        # convert the schedule to a table with visualizations
+        pass
+    
+    def clear(self): 
+        self.status_schedule = []
+        self.previous_status = None
+
 
 class Plane:
     def __init__(self, id, capacity):
@@ -71,9 +117,14 @@ class Plane:
 
         self.curr_fly_total_miles = None # int
 
+        self.schedule = PlaneSchedule() 
+
         # TODO: change this parameter
         self.MILE_COMPLETION_PER_STEP = 100
         self.PREPARE_STEP_COUNT = 2
+        self.image = pygame.image.load("ucak.png")
+        self.image_size = (30, 30)
+        self.image = pygame.transform.scale(self.image, self.image_size) 
 
     def init_model(self, model):
         if model not in model_informations:
@@ -84,6 +135,7 @@ class Plane:
         self.capacity = model_informations[model]["capacity"]
 
     def step(self, action):
+        self.schedule.add_step(self.status, self.departure_port_id, self.arrival_port_id)
         if self.status == PlaneStatus.WAIT:
             if action != 0:
                 arrival_port_id = action - 1
@@ -112,8 +164,7 @@ class Plane:
                 self.current_passenger_ratio = (int) ((self.current_passenger_count / self.capacity) * 100)
                 self.route_completion = 0
 
-                # TODO: get total miles from thy api
-                self.curr_fly_total_miles = 1000
+                self.curr_fly_total_miles = port_distances[ports[self.departure_port_id].name][ports[self.arrival_port_id].name]
                 self.status = PlaneStatus.FLY
             return 0.8
 
@@ -122,6 +173,7 @@ class Plane:
                 return -100.0
 
             self.route_completion += (int) ((self.MILE_COMPLETION_PER_STEP / self.curr_fly_total_miles) * 100)
+            self.location = interpolate_location(ports[self.departure_port_id].location, ports[self.arrival_port_id].location, self.route_completion)
             if self.route_completion >= 1.0:
                 # change from fly to wait status
                 ports[self.departure_port_id].plane_departing.remove(self.id)
@@ -154,6 +206,55 @@ class Plane:
 
         self.route_completion = 0
         self.curr_fly_total_miles = None
+        self.schedule.clear()
+    
+class Visualization: 
+    def __init__(self, width, height) -> None:
+        pygame.init()  # pygame'i başlatır
+        self.width = width
+        self.height = height
+        self.screen = pygame.display.set_mode((self.width, self.height))  # ekranı oluşturur
+        pygame.display.set_caption("Simulasyon")  # pencere
+                # pencere başlığını ayarlar
+        self.background_image = pygame.image.load("arkaplan.jpg")  # arkaplan resmini yükler
+        self.background_image = pygame.transform.scale(self.background_image, (self.width, self.height))
+
+        self.boundary_min_x = 0
+        self.boundary_min_y = 0
+        self.boundary_max_x = 0
+        self.boundary_max_y = 0
+        self.lat_length = self.boundary_max_x - self.boundary_min_x
+        self.lon_length = self.boundary_max_y - self.boundary_min_y
+
+    def convert_geoloc_to_cart(self, loc): 
+        x_ratio = (loc["longitude"] - self.boundary_min_x) / self.lon_length
+        y_ratio = (loc["latitude"] - self.boundary_min_y) / self.lat_length
+        x_loc = x_ratio * self.width
+        y_loc = y_ratio * self.height
+        return (x_loc, y_loc)
+
+    def render_port(self, port: Port): 
+        color=(0, 0, 0)
+        circle_radius = 5
+        size=32
+        font = pygame.font.Font(None, size)  # font nesnesi oluşturur
+        text_surface = font.render(port.name, True, color)  # metni renderlar
+        port_cart_loc = self.convert_geoloc_to_cart(port.location)
+        self.screen.blit(text_surface, (port_cart_loc[0], port_cart_loc[1] + circle_radius))  # metni çizer
+        pygame.draw.circle(self.screen, color, self.location, circle_radius)
+
+    def render_plane(self, plane: Plane): 
+        plane_cart_loc = self.convert_geoloc_to_cart(plane.location)
+        self.screen.blit(plane.image, plane_cart_loc)
+    
+    def render(self): 
+        self.screen.blit(self.background_image, (0, 0))
+        for port in ports.values():  # havalimanlarını çizer
+            self.render_port(port)
+        for plane in planes.values(): 
+            self.render_plane(plane)
+        pygame.display.flip()
+
 
 class Simulation (gym.Env):
     metadata = {'render.modes': ['human', 'machine']}
@@ -185,6 +286,9 @@ class Simulation (gym.Env):
         self.observation_space = Tuple([one_space for _ in range(len(planes))])
         self.action_space = Tuple([Discrete(len(ports) + 1) for _ in range(len(planes))])
 
+        self.visualize = False
+        self.visualizator = Visualization(800, 600)
+
         #TODO: Do we need it ?
         # self.reset()
 
@@ -193,6 +297,9 @@ class Simulation (gym.Env):
         reward = 0
         for i, plane in planes.items():
             reward += plane.step(action)
+        
+        if self.visualize: 
+            self.visualizator.render()
 
         self.step_count += 1
 
