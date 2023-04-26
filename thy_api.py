@@ -43,4 +43,22 @@ class ThyAPI:
 if __name__ == "__main__": 
     api = ThyAPI()
     domestic_ports = api.get_domestic_ports()
+    # ports = {}
+    # for port in domestic_ports: 
+    #     ports[port[0]] = port[1]
+    # with open('ports.json', 'w') as fp:
+    #     json.dump(ports, fp)
+
+    port_distances = {}
+    for port in domestic_ports: 
+        port_distances[port[0]] = {}
+        for other_port in domestic_ports: 
+            if port[0] != other_port[0]: 
+                try: 
+                    distance = api.get_distance_between_ports(port[0], other_port[0])["data"]["distance"]
+                    port_distances[port[0]][other_port[0]] = distance
+                except: 
+                    print("Distance not found")
+    with open('port_distances.json', 'w') as fp:
+        json.dump(port_distances, fp)
     # api.get_distance_between_ports("IST", "BAL")
