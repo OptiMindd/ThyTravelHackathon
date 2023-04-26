@@ -43,4 +43,4 @@ class ThyAPI:
 if __name__ == "__main__": 
     api = ThyAPI()
     domestic_ports = api.get_domestic_ports()
-    api.get_distance_between_ports("IST", "BAL")
+    # api.get_distance_between_ports("IST", "BAL")
