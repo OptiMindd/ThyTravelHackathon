@@ -7,9 +7,11 @@ import random
 import pygame
 import json
 
-ports = {}
-planes = {}
 port_distances = json.load(open("port_distances.json"))
+port_count = 10
+plane_count = 1
+domestic_ports = json.load(open("ports.json"))
+domestic_ports = [[port_name, domestic_ports[port_name]] for port_name in domestic_ports.keys()][:port_count]
 
 model_informations = {}
 possible_passengers_between_ports = {}
@@ -32,8 +34,8 @@ class Port:
         self.current_passenger_count = None  # int
         self.possible_passenger_count = {}  # {port: int}
 
-    def update(self, mode="train"):
-        for port_id in ports.keys():
+    def update(self, resources, mode="train"):
+        for port_id in resources.ports.keys():
             if port_id != self.id:
                 if mode == "test":
                     self.possible_passenger_count[port_id] += possible_passengers_between_ports[(self.id, port_id)] * random.uniform(0.9, 1.1)
@@ -41,10 +43,10 @@ class Port:
                     self.possible_passenger_count[port_id] = random.randint(200, 1000)
                 self.current_passenger_count += self.possible_passenger_count[port_id]
     
-    def reset(self, continued_plane_id, mode="train"): 
+    def reset(self, continued_plane_id, resources, mode="train"): 
         self.current_passenger_count = 0
         self.possible_passenger_count = {self.id : 0}
-        for port_id in ports.keys(): 
+        for port_id in resources.ports.keys(): 
             if port_id != self.id: 
                 if mode == "test": 
                     self.possible_passenger_count[port_id] = possible_passengers_between_ports[(self.id, port_id)] * random.uniform(0.9, 1.1)
@@ -55,10 +57,10 @@ class Port:
         self.plane_departing = []
         parked_plane_count = self.current_passenger_count // 250
         self.plane_parked = []
-        plane_left = len(planes) - continued_plane_id
+        plane_left = len(resources.planes) - continued_plane_id
         for _ in range(min(parked_plane_count, plane_left)):
             self.plane_parked.append(continued_plane_id)
-            planes[continued_plane_id].reset(self.id)
+            resources.planes[continued_plane_id].reset(self.id, resources)
             continued_plane_id += 1
         return continued_plane_id
 
@@ -143,7 +145,7 @@ class Plane:
         self.fuel = model_informations[model]["fuel"]
         self.capacity = model_informations[model]["capacity"]
 
-    def step(self, action):
+    def step(self, action, resources):
         self.schedule.add_step(self.status, self.departure_port_id, self.arrival_port_id)
         if self.status == PlaneStatus.WAIT:
             if action != 0:
@@ -161,20 +163,20 @@ class Plane:
             if self.steps_left_for_prepare == 0:
 
                 # change from wait to fly status
-                ports[self.departure_port_id].plane_parked.remove(self.id)
-                ports[self.departure_port_id].plane_departing.append(self.id)
-                ports[self.arrival_port_id].plane_coming.append(self.id)
+                resources.ports[self.departure_port_id].plane_parked.remove(self.id)
+                resources.ports[self.departure_port_id].plane_departing.append(self.id)
+                resources.ports[self.arrival_port_id].plane_coming.append(self.id)
 
                 # transfer passangers from port(departure) to plane
-                self.current_passenger_count = min(self.capacity, ports[self.departure_port_id].possible_passenger_count[self.arrival_port_id])
-                ports[self.departure_port_id].possible_passenger_count[self.arrival_port_id] -= self.current_passenger_count
-                ports[self.departure_port_id].current_passenger_count -= self.current_passenger_count
+                self.current_passenger_count = min(self.capacity, resources.ports[self.departure_port_id].possible_passenger_count[self.arrival_port_id])
+                resources.ports[self.departure_port_id].possible_passenger_count[self.arrival_port_id] -= self.current_passenger_count
+                resources.ports[self.departure_port_id].current_passenger_count -= self.current_passenger_count
 
                 self.current_passenger_ratio = (int) ((self.current_passenger_count / self.capacity) * 100)
                 self.route_completion = 0
 
                 try:
-                    self.curr_fly_total_miles = port_distances[ports[self.departure_port_id].name][ports[self.arrival_port_id].name]
+                    self.curr_fly_total_miles = port_distances[resources.ports[self.departure_port_id].name][resources.ports[self.arrival_port_id].name]
                 except:
                     self.curr_fly_total_miles = 400
                 self.status = PlaneStatus.FLY
@@ -185,13 +187,13 @@ class Plane:
                 return -1
 
             self.route_completion += (int) ((self.MILE_COMPLETION_PER_STEP / self.curr_fly_total_miles) * 100)
-            self.location = interpolate_location(ports[self.departure_port_id].location, ports[self.arrival_port_id].location, self.route_completion)
+            self.location = interpolate_location(resources.ports[self.departure_port_id].location, resources.ports[self.arrival_port_id].location, self.route_completion)
             if self.route_completion >= 1.0:
                 # change from fly to wait status
-                ports[self.departure_port_id].plane_departing.remove(self.id)
-                ports[self.arrival_port_id].plane_coming.remove(self.id)
-                ports[self.arrival_port_id].plane_parked.append(self.id)
-                self.location = ports[self.arrival_port_id].location
+                resources.ports[self.departure_port_id].plane_departing.remove(self.id)
+                resources.ports[self.arrival_port_id].plane_coming.remove(self.id)
+                resources.ports[self.arrival_port_id].plane_parked.append(self.id)
+                self.location = resources.ports[self.arrival_port_id].location
                 # self.arrival.current_passenger_count += self.current_passenger_count
 
                 self.current_port_id = self.arrival_port_id
@@ -206,7 +208,7 @@ class Plane:
     def get_reward(self):
         return (self.current_passenger_ratio / 100) ** 2
 
-    def reset(self, parked_plane_id):
+    def reset(self, parked_plane_id, resources):
         self.current_passenger_count = 0
         self.current_passenger_ratio = 0
         self.status = PlaneStatus.WAIT
@@ -214,7 +216,7 @@ class Plane:
         self.departure_port_id = parked_plane_id
         self.current_port_id = parked_plane_id
         self.arrival_port_id = -1
-        self.location = ports[parked_plane_id].location
+        self.location = resources.ports[parked_plane_id].location
 
         self.route_completion = 0
         self.curr_fly_total_miles = None
@@ -259,46 +261,51 @@ class Visualization:
         plane_cart_loc = self.convert_geoloc_to_cart(plane.location)
         self.screen.blit(plane.image, plane_cart_loc)
     
-    def render(self): 
+    def render(self, resources): 
         self.screen.blit(self.background_image, (0, 0))
-        for port in ports.values():  # havalimanlarını çizer
+        for port in resources.ports.values():  # havalimanlarını çizer
             self.render_port(port)
-        for plane in planes.values(): 
+        for plane in resources.planes.values(): 
             self.render_plane(plane)
         pygame.display.flip()
 
 
-class Simulation (gym.Env):
-    metadata = {'render.modes': ['human', 'machine']}
+class Resources: 
+    def __init__(self) -> None:
+        self.ports = {}
+        self.planes = {}
 
-    def __init__(self, domestic_ports):
-        self.seed = np.random.seed
-        self.sim_duration = 168  # in hour
-        self.step_count = 0
-
-        port_count = 10
         for port_id, port_info in enumerate(domestic_ports):
-            ports[port_id] = Port(port_id, port_info[0], port_info[1])
+            self.ports[port_id] = Port(port_id, port_info[0], port_info[1])
 
-        plane_count = 1
         for plane_id in range(plane_count):
             if plane_id % 2 == 0:
                 capacity = 250
             else:
                 capacity = 350
-            planes[plane_id] = Plane(plane_id, capacity)
+            self.planes[plane_id] = Plane(plane_id, capacity)
+
+
+class Simulation (gym.Env):
+    metadata = {'render.modes': ['human', 'machine']}
+
+    def __init__(self):
+        self.seed = np.random.seed
+        self.sim_duration = 168  # in hour
+        self.step_count = 0
+        self.resources = Resources()
 
         # one_space = Tuple((Discrete(len(ports)), Discrete(len(ports)),
         #                    Box(low=np.array([0, 0, 0]), high=np.array([100, 100, 100]), shape=(3,),
         #                        dtype=np.integer)))  # departure, arrival, current_passenger, passenger_ratio, route_completion
 
-        one_space = Box(low=np.array([0, -1, 0, 0, 0]), high=np.array([len(ports), len(ports), 100, 100, 100]), shape=(5,),
+        one_space = Box(low=np.array([0, -1, 0, 0, 0]), high=np.array([len(self.resources.ports), len(self.resources.ports), 100, 100, 100]), shape=(5,),
                                dtype=np.integer)  # departure, arrival, current_passenger, passenger_ratio, route_completion
 
-        self.observation_space = Tuple([one_space for _ in range(len(planes))])
+        self.observation_space = Tuple([one_space for _ in range(len(self.resources.planes))])
         # self.action_space = Tuple([Discrete(len(ports) + 1) for _ in range(len(planes))])
         # self.action_space = Dict({plane_id: Discrete(len(ports) + 1) for plane_id in range(len(planes))})
-        self.action_space = Discrete(len(ports))
+        self.action_space = Discrete(len(self.resources.ports))
 
         self.visualize = False
         if self.visualize: 
@@ -310,15 +317,15 @@ class Simulation (gym.Env):
     def step(self, action):
         done = False
         reward = 0
-        for i, plane in planes.items():
-            reward += plane.step(action)
+        for i, plane in self.resources.planes.items():
+            reward += plane.step(action, self.resources)
         if self.step_count % 24 == 0:
-            for port in ports.values():
-                port.update()
+            for port in self.resources.ports.values():
+                port.update(self.resources)
 
         
         if self.visualize: 
-            self.visualizator.render()
+            self.visualizator.render(self.resources)
 
         self.step_count += 1
 
@@ -332,10 +339,10 @@ class Simulation (gym.Env):
 
     def reset(self, seed = None, options = None):
         current_plane_id = 0
-        for port in ports.values():
-            current_plane_id = port.reset(current_plane_id)
-        for i in range(current_plane_id, len(planes)):
-            planes[i].reset(len(ports) - 1)
+        for port in self.resources.ports.values():
+            current_plane_id = port.reset(current_plane_id, self.resources)
+        for i in range(current_plane_id, len(self.resources.planes)):
+            self.resources.planes[i].reset(len(self.resources.ports) - 1, self.resources)
 
         self.step_count = 0
 
@@ -343,7 +350,7 @@ class Simulation (gym.Env):
 
     def observe(self):
         observations = []
-        for plane in planes.values():
+        for plane in self.resources.planes.values():
             # print([plane.departure_port_id, plane.arrival_port_id, plane.current_passenger_count, plane.current_passenger_ratio, plane.route_completion])
             observation = np.array([plane.departure_port_id, plane.arrival_port_id, plane.current_passenger_count, plane.current_passenger_ratio, plane.route_completion], dtype=np.integer)
             observations.append(observation)

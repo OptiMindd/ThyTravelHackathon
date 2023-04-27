@@ -17,7 +17,6 @@ from tianshou.utils.net.common import Net
 from tianshou.utils.net.discrete import NoisyLinear
 
 from Simulation import Simulation
-from thy_api import ThyAPI
 
 port_count = 10
 plane_count = 1
@@ -64,8 +63,6 @@ def get_args():
 
 
 def test_rainbow(args=get_args()):
-    api = ThyAPI()
-    domestic_ports = api.get_domestic_ports()[:port_count]
     # env = Simulation(domestic_ports)
     args.state_shape = 5 * plane_count
     args.action_shape = port_count + 1
@@ -75,11 +72,11 @@ def test_rainbow(args=get_args()):
     # train_envs = gym.make(args.task)
     # you can also use tianshou.env.SubprocVectorEnv
     train_envs = DummyVectorEnv(
-        [lambda: Simulation(domestic_ports) for _ in range(args.training_num)]
+        [lambda: Simulation() for _ in range(args.training_num)]
     )
     # test_envs = gym.make(args.task)
     test_envs = DummyVectorEnv(
-        [lambda: Simulation(domestic_ports) for _ in range(args.test_num)]
+        [lambda: Simulation() for _ in range(args.test_num)]
     )
     # seed
     np.random.seed(args.seed)
