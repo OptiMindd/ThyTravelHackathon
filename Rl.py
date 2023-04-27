@@ -38,7 +38,7 @@ def get_args():
     parser.add_argument('--n-step', type=int, default=3)
     parser.add_argument('--target-update-freq', type=int, default=320)
     parser.add_argument('--epoch', type=int, default=50)
-    parser.add_argument('--step-per-epoch', type=int, default=10000)
+    parser.add_argument('--step-per-epoch', type=int, default=100000)
     parser.add_argument('--step-per-collect', type=int, default=24)
     parser.add_argument('--update-per-step', type=float, default=0.125)
     parser.add_argument('--batch-size', type=int, default=256)
@@ -64,8 +64,8 @@ def get_args():
 
 def test_rainbow(args=get_args()):
     # env = Simulation(domestic_ports)
-    args.state_shape = 5 * plane_count
-    args.action_shape = port_count + 1
+    args.state_shape = (port_count * port_count) + 1
+    args.action_shape = port_count
     if args.reward_threshold is None:
         default_reward_threshold = {"CartPole-v0": 195}
         args.reward_threshold = 1000000000 # TODO:What is that ?
@@ -142,21 +142,21 @@ def test_rainbow(args=get_args()):
 
     def train_fn(epoch, env_step):
         # eps annealing, just a demo
-        if env_step <= 10000:
+        if env_step <= 100000:
             policy.set_eps(args.eps_train)
-        elif env_step <= 50000:
-            eps = args.eps_train - (env_step - 10000) / \
-                40000 * (0.9 * args.eps_train)
+        elif env_step <= 500000:
+            eps = args.eps_train - (env_step - 100000) / \
+                400000 * (0.9 * args.eps_train)
             policy.set_eps(eps)
         else:
             policy.set_eps(0.1 * args.eps_train)
         # beta annealing, just a demo
         if args.prioritized_replay:
-            if env_step <= 10000:
+            if env_step <= 100000:
                 beta = args.beta
-            elif env_step <= 50000:
-                beta = args.beta - (env_step - 10000) / \
-                    40000 * (args.beta - args.beta_final)
+            elif env_step <= 500000:
+                beta = args.beta - (env_step - 100000) / \
+                    400000 * (args.beta - args.beta_final)
             else:
                 beta = args.beta_final
             buf.set_beta(beta)
