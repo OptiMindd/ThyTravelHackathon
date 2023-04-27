@@ -38,18 +38,18 @@ def get_args():
     parser.add_argument('--n-step', type=int, default=3)
     parser.add_argument('--target-update-freq', type=int, default=320)
     parser.add_argument('--epoch', type=int, default=50)
-    parser.add_argument('--step-per-epoch', type=int, default=100000)
-    parser.add_argument('--step-per-collect', type=int, default=24)
+    parser.add_argument('--step-per-epoch', type=int, default=10000)
+    parser.add_argument('--step-per-collect', type=int, default=96)
     parser.add_argument('--update-per-step', type=float, default=0.125)
     parser.add_argument('--batch-size', type=int, default=256)
     parser.add_argument(
-        '--hidden-sizes', type=int, nargs='*', default=[plane_count*port_count*10, 512, 1024, 512, 128]
+        '--hidden-sizes', type=int, nargs='*', default=[(port_count + 1)**2, 128, 128, 56]
     )
     parser.add_argument('--training-num', type=int, default=8)
     parser.add_argument('--test-num', type=int, default=100)
     parser.add_argument('--logdir', type=str, default='log')
     parser.add_argument('--render', type=float, default=0.)
-    parser.add_argument('--prioritized-replay', action="store_true", default=False)
+    parser.add_argument('--prioritized-replay', action="store_true", default=True)
     parser.add_argument('--alpha', type=float, default=0.6)
     parser.add_argument('--beta', type=float, default=0.4)
     parser.add_argument('--beta-final', type=float, default=1.)
@@ -64,7 +64,7 @@ def get_args():
 
 def test_rainbow(args=get_args()):
     # env = Simulation(domestic_ports)
-    args.state_shape = (port_count * port_count) + 1
+    args.state_shape = (port_count * (port_count + 1))
     args.action_shape = port_count
     if args.reward_threshold is None:
         default_reward_threshold = {"CartPole-v0": 195}

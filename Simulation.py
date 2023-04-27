@@ -150,6 +150,8 @@ class Plane:
         self.image_size = (30, 30)
         self.image = pygame.transform.scale(self.image, self.image_size)
 
+        self.stops = []
+
     def init_model(self, model):
         if model not in model_informations:
             print("Model is not available!!")
@@ -186,10 +188,16 @@ class Plane:
         self.location = resources.ports[self.arrival_port_id].location
         # self.arrival.current_passenger_count += self.current_passenger_count
 
-        reward = self.get_reward(resources)
+        if self.current_port_id == action:
+            reward = -1
+        else:
+            reward = self.get_reward(resources)
         self.current_port_id = self.arrival_port_id
         self.departure_port_id = self.arrival_port_id
         self.arrival_port_id = -1
+
+        self.stops.append(resources.ports[self.departure_port_id].name)
+
         return reward
 
     def get_reward(self, resource):
@@ -219,6 +227,8 @@ class Plane:
         self.route_completion = 0
         self.curr_fly_total_miles = None
         self.schedule.clear()
+
+        self.stops.clear()
 
 
 class Visualization:
@@ -303,12 +313,18 @@ class Simulation(gym.Env):
         #                              high=(np.ones((len(self.resources.ports), len(self.resources.ports))) - np.diag([1]*len(self.resources.ports))) * max_passenger_count,
         #                              shape=(len(self.resources.ports), len(self.resources.ports)),
         #                              dtype=np.integer)))  # departure, current_passenger, passenger_ratio
+
+        port_count = len((self.resources.ports))
         high_values = (np.ones((len(self.resources.ports), len(self.resources.ports))) - np.diag([1]*len(self.resources.ports))) * max_passenger_count
-        high_values = np.concatenate((np.array([len(self.resources.ports)]), high_values.flatten()))
-        self.observation_space = Box(low=np.zeros(len(self.resources.ports) * len(self.resources.ports) + 1),
-             high=high_values,
-             shape=(len(self.resources.ports) * len(self.resources.ports) + 1, ),
-             dtype=np.integer)
+        high_values = np.vstack((np.ones(port_count), high_values))
+        # high_values = np.concatenate((np.array([len(self.resources.ports)]), high_values.flatten()))
+        # self.observation_space = Box(low=np.zeros(len(self.resources.ports) * len(self.resources.ports) + 1),
+        #      high=high_values,
+        #      shape=(len(self.resources.ports) * len(self.resources.ports) + 1, ),
+        #      dtype=np.integer)
+
+
+        self.observation_space = Box(low=np.zeros((port_count + 1, port_count)), high=high_values, shape=(port_count+1, port_count), dtype=np.integer)
 
         self.action_space = Discrete(len(self.resources.ports))
 
@@ -325,7 +341,7 @@ class Simulation(gym.Env):
         for i, plane in self.resources.planes.items():
             reward += plane.step(action, self.resources)
 
-        if self.step_count % 24 == 0:
+        if self.step_count % 5 == 0:
             for port in self.resources.ports.values():
                 port.update(self.resources)
 
@@ -358,7 +374,11 @@ class Simulation(gym.Env):
         for port in self.resources.ports.values():
             for other_port in self.resources.ports.values():
                 port_passenger_mat[port.id][other_port.id] = port.possible_passenger_count[other_port.id]
-        state = np.concatenate(([plane_departure_port_id], port_passenger_mat.flatten()))
+        # state = np.concatenate(([plane_departure_port_id], port_passenger_mat.flatten()))
+        current_port_vec = np.zeros(len(self.resources.ports))
+        current_port_vec[plane_departure_port_id] = 1
+        state = np.vstack((current_port_vec, port_passenger_mat))
+        # state = np.zeros((len(self.resources.ports) + 1, len(self.resources.ports)))
         return state
 
         # for plane in self.resources.planes.values():
