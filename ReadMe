@@ -1,4 +1,0 @@
-Simulation.py: Port, plane ve simulasyon kodlarının bulunduğu dosyadır. Simulasyon kodları gym environment'ı temel alınarak oluşturulmuştur. 
-thy_api_config.py: Thy API'ını kullanmak için gereken konfigurasyon değerlerini içerir
-thy_api.py: Thy API'ını kullanarak ports, sectors ve availability bilgilerini çeken kodları içerir
-Rl.py: Reinforcement learning algoritmalarını kullanarak simulasyonu çalıştıran ve modeli train eden kodları içerir.
